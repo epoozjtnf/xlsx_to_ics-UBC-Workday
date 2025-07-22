@@ -13,5 +13,10 @@ cd ~/Downloads
 ```
 Or any other folder as long as the two files are in them and you are running the following line inside that folder:
 ```
+pip install -r requirements.txt
 python3 xlsx_to_ics.py
 ```
+
+If you encounter an error installing packages, run the following line:
+```
+python3 xlsx_to_ics.py --tz America/Vancouver  # Replace 'America/Vancouver' with your own timezone, e.g., 'Europe/London' or 'Asia/Tokyo'```
