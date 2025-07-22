@@ -13,5 +13,6 @@ cd ~/Downloads
 ```
 Or any other folder as long as the two files are in them and you are running the following line inside that folder:
 ```
+pip install -r requirements.txt
 python3 xlsx_to_ics.py
 ```
