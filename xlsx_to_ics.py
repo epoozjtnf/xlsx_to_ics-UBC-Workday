@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 try:
     from tzlocal import get_localzone_name
 except ImportError:
-    raise ImportError("tzlocal package not found.")
+    print("tzlocal package not found. Cannot automatically fetch system timezone. Will use fallback or user-specified timezone.")
 
 CRLF = "\r\n"
 NS = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
