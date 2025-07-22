@@ -4,10 +4,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zipfile import ZipFile
 import xml.etree.ElementTree as ET
+from zoneinfo import ZoneInfo
 try:
-    from zoneinfo import ZoneInfo
+    from tzlocal import get_localzone_name
 except ImportError:
-    ZoneInfo = None
+    raise ImportError("tzlocal package not found.")
 
 CRLF = "\r\n"
 NS = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
@@ -15,6 +16,7 @@ SECTION_COL, DATE_COL, FORMAT_COL, DELIVERY_COL, INSTRUCTOR_COL = 'G', 'K', 'I',
 SKIP_BEFORE = 4 # Skip rows before actual data
 TEMP_FILE, XLSX_FILE, ICS_FILE = "temp_calendar.csv", "View_My_Courses.xlsx", "Calendar.ics"
 DEFAULT_TZ = "SYSTEM"
+FALLBACK_TZ = "America/Vancouver"
 _DOW = dict(MO=0, TU=1, WE=2, TH=3, FR=4, SA=5, SU=6)
 
 def to_24h(t): 
@@ -35,11 +37,11 @@ def make_event(cat, start, end, summary, desc, loc, rrule, color=""):
     return {"category": q(cat), "start": q(start), "end": q(end), "summary": q(summary),
             "description": q(desc), "location": q(loc), "rrule": q(rrule), "color": q(color)}
 
-def read_shared_strings(zf):
+def read_shared_strings(zf:ZipFile):
     root = ET.fromstring(zf.read("xl/sharedStrings.xml"))
     return [si.find("main:t", NS).text for si in root.iterfind("main:si", NS)]
 
-def read_sheet_data(zf, sst):
+def read_sheet_data(zf:ZipFile, sst):
     root = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
     data = {}
     for c in root.iterfind('.//main:c', NS):
@@ -95,7 +97,7 @@ def fold_lines(lines):
         folded.append(line)
     return folded
 
-def build_vevent(ev, default_tz=timezone.utc):
+def build_vevent(ev, default_tz:ZoneInfo):
     start, end = ev["start"], ev["end"]
     if ev.get("rrule") and "BYDAY=" in ev["rrule"]:
         offset = 7
@@ -103,11 +105,11 @@ def build_vevent(ev, default_tz=timezone.utc):
             offset = min(offset, (_DOW[day] - start.weekday()) % 7)
         start, end = start + timedelta(days=offset), end + timedelta(days=offset)
     uid = ev.get("uid") or f"{start.timestamp()}-{id(ev)}@unified_ics"
-    tzid = ev.get("zone") or default_tz.tzname(None)
+    tzid = default_tz.key # Get IANA timezone name
     lines = [
         "BEGIN:VEVENT",
         f"UID:{uid}",
-        f"DTSTAMP:{format_dt(datetime.utcnow())}",
+        f"DTSTAMP:{format_dt(datetime.now(timezone.utc))}",
         f"DTSTART;TZID={tzid}:{start.strftime('%Y%m%dT%H%M%S')}",
         f"DTEND;TZID={tzid}:{end.strftime('%Y%m%dT%H%M%S')}",
         f"SUMMARY:{ical_escape(ev.get('summary',''))}"
@@ -148,20 +150,26 @@ def main(argv=None):
     p.add_argument("--input", default=XLSX_FILE, help="XLSX file path")
     args = p.parse_args(argv)
     
-    if args.tz.upper() == "SYSTEM":
-        default_tz = datetime.now().astimezone().tzinfo
+    if args.tz.upper() == DEFAULT_TZ:
+        try:
+            default_tz = ZoneInfo(get_localzone_name())
+        except:
+            print(f"Local zone not found. Using fallback {FALLBACK_TZ}")
+            default_tz = ZoneInfo(FALLBACK_TZ)
     else:
-        default_tz = ZoneInfo(args.tz) if ZoneInfo else sys.exit("zoneinfo unavailable")
-    tz_str = args.tz
+        default_tz = ZoneInfo(args.tz)
     
     if not os.path.exists(args.input):
         sys.exit(f"File not found: {args.input}")
+
     with ZipFile(args.input) as zf:
         sst = read_shared_strings(zf)
         data = read_sheet_data(zf, sst)
     
-    calendar = build_calendar(data)
     target = args.csv
+
+    calendar = build_calendar(data)
+    
     if os.path.exists(target):
         if input(f"\"{TEMP_FILE}\" exists. Type 'yes' to overwrite or anything else to cancel: ").strip().lower() != 'yes':
             return
@@ -171,18 +179,23 @@ def main(argv=None):
     src = Path(target)
     if not src.exists():
         sys.exit(f"File not found: {src}")
+
     events = _load_events_from_csv(src, default_tz)
+
     calendars = {}
+
     for ev in events:
         calendars.setdefault(ev.pop("category"), []).append(build_vevent(ev, default_tz))
+
     for cat, vevents in calendars.items():
         cal = ["BEGIN:VCALENDAR","VERSION:2.0","CALSCALE:GREGORIAN",
-               "PRODID:-//UnifiedICS//EN",f"X-WR-CALNAME:{ical_escape(cat)}",f"X-WR-TIMEZONE:{tz_str}"]
+               "PRODID:-//UnifiedICS//EN",f"X-WR-CALNAME:{ical_escape(cat)}",f"X-WR-TIMEZONE:{default_tz.key}"]
         for v in vevents: cal.extend(v)
         cal.append("END:VCALENDAR")
         fname = f"{cat}.ics"
         with open(fname, "w", newline="") as f: f.write(CRLF.join(cal))
         print(f"Wrote {fname} ({Path(fname).stat().st_size} bytes)")
+
     if os.path.exists(TEMP_FILE):
         os.remove(TEMP_FILE)
         print(f"Removed temporary file: {TEMP_FILE}")
