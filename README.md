@@ -12,7 +12,7 @@ Open up terminal and enter:
 ```
 cd ~/Downloads
 ```
-Or any other folder as long as the two files are in them and you are running the following line inside that folder:
+Or any other folder as long as the two files are in them, and you are running the following line inside that folder:
 ```
 python3 xlsx_to_ics.py
 ```
