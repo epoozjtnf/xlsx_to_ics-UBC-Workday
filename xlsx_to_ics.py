@@ -4,25 +4,29 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zipfile import ZipFile
 import xml.etree.ElementTree as ET
-try:
-    from zoneinfo import ZoneInfo
-except ImportError:
-    ZoneInfo = None
 
 CRLF = "\r\n"
 NS = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 SECTION_COL, DATE_COL, FORMAT_COL, DELIVERY_COL, INSTRUCTOR_COL = 'G', 'K', 'I', 'J', 'L'
 SKIP_BEFORE = 4 # Skip rows before actual data
-TEMP_FILE, XLSX_FILE, ICS_FILE = "temp_calendar.csv", "View_My_Courses.xlsx", "Calendar.ics"
-DEFAULT_TZ = "SYSTEM"
+TEMP_FILE, XLSX_FILE, ICS_FILE = "temp_calendar.csv", "View_My_Courses.xlsx", "My Enrolled Courses.ics"
+DEFAULT_TZ = "America/Vancouver"
 _DOW = dict(MO=0, TU=1, WE=2, TH=3, FR=4, SA=5, SU=6)
 
-def to_24h(t): 
+def to_24h(t):
     return datetime.strptime(t.replace('.', '').replace('  ', ' ').upper().strip(), "%I:%M %p").strftime("%H:%M")
 
+def reformat(item):
+    month, day, year = item.split('/')
+    return year + "-" + month + "-" + day
+
 def parse_date_location(s):
-    date_part, days_part, time_part, loc = (x.strip() for x in s.split('|'))
-    start_date, end_date = (d.strip() for d in date_part.split(' - '))
+    temp = s.split('|')
+    date_part = temp[0]
+    days_part = temp[1]
+    time_part = temp[2]
+    loc = " ".join(temp[3:])
+    start_date, end_date = (reformat(d.strip()) for d in date_part.split(' - '))
     start_time, end_time = (t.strip() for t in time_part.split(' - '))
     start_dt = f"{start_date}T{to_24h(start_time)}"
     end_dt   = f"{start_date}T{to_24h(end_time)}"
@@ -129,8 +133,8 @@ def _load_events_from_csv(src, default_tz):
         for row in csv.DictReader(f):
             events.append({
                 "category": row.get("category","Default"),
-                "start": datetime.fromisoformat(row["start"]).replace(tzinfo=default_tz),
-                "end": datetime.fromisoformat(row["end"]).replace(tzinfo=default_tz),
+                "start": datetime.fromisoformat(row["start"].replace('/', '-')).replace(tzinfo=default_tz),
+                "end": datetime.fromisoformat(row["end"].replace('/', '-')).replace(tzinfo=default_tz),
                 "summary": row.get("summary",""),
                 "description": row.get("description",""),
                 "location": row.get("location",""),
@@ -142,24 +146,23 @@ def _load_events_from_csv(src, default_tz):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description="Generate RFC 5545 .ics calendars.")
-    p.add_argument("--tz", default=DEFAULT_TZ, help="Time-zone (IANA)")
     p.add_argument("--csv", default=TEMP_FILE, help="CSV input file")
     p.add_argument("--outfile", default=ICS_FILE, help="Output file path")
     p.add_argument("--input", default=XLSX_FILE, help="XLSX file path")
     args = p.parse_args(argv)
-    
-    if args.tz.upper() == "SYSTEM":
-        default_tz = datetime.now().astimezone().tzinfo
-    else:
-        default_tz = ZoneInfo(args.tz) if ZoneInfo else sys.exit("zoneinfo unavailable")
-    tz_str = args.tz
-    
+
+    if os.path.exists(args.outfile):
+        if input(f"\"{args.outfile}\" exists. Type 'yes' to overwrite or anything else to cancel: ").strip().lower() != 'yes':
+            return
+
+    default_tz = datetime.now().astimezone().tzinfo
+
     if not os.path.exists(args.input):
         sys.exit(f"File not found: {args.input}")
     with ZipFile(args.input) as zf:
         sst = read_shared_strings(zf)
         data = read_sheet_data(zf, sst)
-    
+
     calendar = build_calendar(data)
     target = args.csv
     if os.path.exists(target):
@@ -167,7 +170,7 @@ def main(argv=None):
             return
     write_csv(calendar, target)
     print(f"Written {len(calendar)} events to '{target}'")
-    
+
     src = Path(target)
     if not src.exists():
         sys.exit(f"File not found: {src}")
@@ -177,7 +180,7 @@ def main(argv=None):
         calendars.setdefault(ev.pop("category"), []).append(build_vevent(ev, default_tz))
     for cat, vevents in calendars.items():
         cal = ["BEGIN:VCALENDAR","VERSION:2.0","CALSCALE:GREGORIAN",
-               "PRODID:-//UnifiedICS//EN",f"X-WR-CALNAME:{ical_escape(cat)}",f"X-WR-TIMEZONE:{tz_str}"]
+               "PRODID:-//UnifiedICS//EN",f"X-WR-CALNAME:{ical_escape(cat)}",f"X-WR-TIMEZONE:{DEFAULT_TZ}"]
         for v in vevents: cal.extend(v)
         cal.append("END:VCALENDAR")
         fname = f"{cat}.ics"
