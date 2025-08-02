@@ -4,7 +4,8 @@ A dependency free python script that converts xlsx file for registered courses f
 <img width="749" height="353" alt="Screenshot 2025-07-19 at 5 53 45 PM" src="https://github.com/user-attachments/assets/908d97e8-f3d2-4f6e-bbfc-75f11616a84f" />
 
 ## Requirement
-Python on the system.
+1. Python on the system.
+2. You are in Vancouver time
 ## How to use
 Put xlsx file from Workday and the xlsx_to_ics.py in the same folder (if you just downloaded them, they are probably already both inside the Downloads folder)
 Open up terminal and enter:
