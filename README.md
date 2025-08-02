@@ -6,7 +6,7 @@ A dependency free python script that converts xlsx file for registered courses f
 ## Requirement
 1. Python on the system.
 2. You are in Vancouver time<br>
-   (if you have a different time zone and cannot change it, refer to [Dhawal Rathore's fork](https://github.com/dhawal-rathore/xlsx_to_ics-UBC-Workday)
+(if you have a different time zone and cannot change it, refer to [Dhawal Rathore's fork](https://github.com/dhawal-rathore/xlsx_to_ics-UBC-Workday)
 ## How to use
 Put xlsx file from Workday and the xlsx_to_ics.py in the same folder (if you just downloaded them, they are probably already both inside the Downloads folder)
 Open up terminal and enter:
